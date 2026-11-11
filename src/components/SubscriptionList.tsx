@@ -1,4 +1,4 @@
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Plus } from 'lucide-react';
 import SubscriptionRow from '@/components/SubscriptionRow';
 import { formatMoney, getActiveSubscriptions, getMonthlySpend } from '@/lib/subguard-logic';
 import type { Subscription } from '@/types/subguard';
@@ -6,9 +6,10 @@ import type { Subscription } from '@/types/subguard';
 interface SubscriptionListProps {
   subscriptions: Subscription[];
   isLoading: boolean;
+  onAddCustom: () => void;
 }
 
-export default function SubscriptionList({ subscriptions, isLoading }: SubscriptionListProps) {
+export default function SubscriptionList({ subscriptions, isLoading, onAddCustom }: SubscriptionListProps) {
   const active = getActiveSubscriptions(subscriptions);
   const cancelled = subscriptions.filter((sub) => sub.status === 'cancelled');
 
@@ -17,9 +18,18 @@ export default function SubscriptionList({ subscriptions, isLoading }: Subscript
       <div className="border-b border-white/10 px-5 py-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-white">Active Subscriptions</h2>
-          <span className="rounded-full bg-emerald-400/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300">
-            {active.length}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-emerald-400/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300">
+              {active.length}
+            </span>
+            <button
+              type="button"
+              onClick={onAddCustom}
+              className="flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-0.5 text-xs font-medium text-emerald-200 transition hover:border-emerald-300 hover:bg-emerald-400/20 active:scale-95"
+            >
+              <Plus className="h-3 w-3" /> Add
+            </button>
+          </div>
         </div>
         <p className="mt-1 text-xs text-slate-400">Linked accounts, updated live</p>
       </div>

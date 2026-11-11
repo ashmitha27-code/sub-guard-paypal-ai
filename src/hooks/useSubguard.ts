@@ -1,5 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import { fetchMessages, fetchSubscriptions, insertMessage, insertSubscription, updateSubscription } from '@/lib/subguard-data';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  fetchMessages,
+  fetchReminders,
+  fetchSubscriptions,
+  insertCustomSubscription,
+  insertMessage,
+  insertSubscription,
+  updateReminder,
+  updateSubscription,
+} from '@/lib/subguard-data';
 import {
   HELP_TEXT,
   buildAnalysis,
@@ -9,10 +18,11 @@ import {
   findSubscription,
   formatMoney,
   getActiveSubscriptions,
+  getUpcomingReminders,
   joinNames,
   parseCommand,
 } from '@/lib/subguard-logic';
-import type { ChatMessage, Subscription } from '@/types/subguard';
+import type { ChatMessage, CustomSubscriptionInput, Reminder, Subscription } from '@/types/subguard';
 
 const LOAD_ERROR = "Subguard couldn't load your subscriptions. Please refresh the page.";
 const ACTION_ERROR = "That didn't go through. Please try again.";
@@ -22,13 +32,14 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 export function useSubguard() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasStarted = useRef(false);
 
-  const reply = async (content: string, delayMs = 700) => {
+  const reply = useCallback(async (content: string, delayMs = 700) => {
     setIsTyping(true);
     try {
       await sleep(delayMs);
@@ -37,7 +48,7 @@ export function useSubguard() {
     } finally {
       setIsTyping(false);
     }
-  };
+  }, []);
 
   const replaceSubscription = (updated: Subscription) => {
     setSubscriptions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
@@ -48,9 +59,7 @@ export function useSubguard() {
   };
 
   const addSubscription = async (name: string): Promise<boolean> => {
-    const existing = subscriptions.find(
-      (sub) => sub.name.toLowerCase() === name.toLowerCase(),
-    );
+    const existing = subscriptions.find((sub) => sub.name.toLowerCase() === name.toLowerCase());
 
     if (existing && existing.status === 'active') {
       await reply(`You're already subscribed to ${existing.name}. It's in your active list at ${formatMoney(existing.price)} per month.`, 600);
@@ -76,10 +85,7 @@ export function useSubguard() {
     await reply(`Adding ${service.name} at ${formatMoney(service.price)} per month.`, 700);
     const created = await insertSubscription(service);
     appendSubscription(created);
-    await reply(
-      `Done. ${service.name} is now on your active list at ${formatMoney(service.price)} per month.`,
-      800,
-    );
+    await reply(`Done. ${service.name} is now on your active list at ${formatMoney(service.price)} per month.`, 800);
     return true;
   };
 
@@ -122,10 +128,7 @@ export function useSubguard() {
       case 'add': {
         const added = await addSubscription(command.query);
         if (!added) {
-          await reply(
-            `I don't recognize that service. I can add ${catalogNames()}.`,
-            600,
-          );
+          await reply(`I don't recognize that service. I can add ${catalogNames()}.`, 600);
         }
         return;
       }
@@ -139,9 +142,7 @@ export function useSubguard() {
         if (sub.status === 'cancelled') {
           return reply(`${sub.name} is already cancelled, so there's nothing more to do.`, 600);
         }
-        return command.type === 'cancel'
-          ? cancelSubscription(sub)
-          : keepSubscription(sub, subscriptions);
+        return command.type === 'cancel' ? cancelSubscription(sub) : keepSubscription(sub, subscriptions);
       }
       default:
         return reply(
@@ -158,12 +159,28 @@ export function useSubguard() {
     (async () => {
       setIsBusy(true);
       try {
-        const [subs, history] = await Promise.all([fetchSubscriptions(), fetchMessages()]);
+        const [subs, history, reminderData] = await Promise.all([
+          fetchSubscriptions(),
+          fetchMessages(),
+          fetchReminders(),
+        ]);
         setSubscriptions(subs);
         setMessages(history);
+        setReminders(reminderData);
         setIsLoading(false);
-        for (const line of buildScanMessages(subs)) {
+
+        const upcoming = getUpcomingReminders(reminderData);
+        const reminderLine =
+          upcoming.length > 0
+            ? `You also have ${upcoming.length} bill${upcoming.length === 1 ? '' : 's'} due soon. Check the reminders panel on the right to mark them paid.`
+            : null;
+
+        const scanLines = buildScanMessages(subs);
+        for (const line of scanLines) {
           await reply(line, 1200);
+        }
+        if (reminderLine) {
+          await reply(reminderLine, 1000);
         }
       } catch {
         setError(LOAD_ERROR);
@@ -172,8 +189,7 @@ export function useSubguard() {
         setIsBusy(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- scan runs once per page load
-  }, []);
+  }, [reply]);
 
   const sendCommand = async (input: string) => {
     const text = input.trim();
@@ -192,5 +208,53 @@ export function useSubguard() {
     }
   };
 
-  return { subscriptions, messages, isLoading, isBusy, isTyping, error, sendCommand };
+  const addCustomSubscription = async (input: CustomSubscriptionInput) => {
+    setIsBusy(true);
+    setError(null);
+    try {
+      const userMessage = await insertMessage('user', `Add custom subscription: ${input.name} at ${formatMoney(input.price)}/mo`);
+      setMessages((prev) => [...prev, userMessage]);
+
+      await reply(`Adding ${input.name} at ${formatMoney(input.price)} per month.`, 700);
+      const created = await insertCustomSubscription(input);
+      appendSubscription(created);
+      await reply(`Done. ${input.name} is now on your active list at ${formatMoney(input.price)} per month.`, 800);
+    } catch {
+      setError(ACTION_ERROR);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const markReminderPaid = async (id: string) => {
+    try {
+      const updated = await updateReminder(id, { status: 'paid' });
+      setReminders((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    } catch {
+      setError(ACTION_ERROR);
+    }
+  };
+
+  const dismissReminder = async (id: string) => {
+    try {
+      const updated = await updateReminder(id, { status: 'dismissed' });
+      setReminders((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    } catch {
+      setError(ACTION_ERROR);
+    }
+  };
+
+  return {
+    subscriptions,
+    messages,
+    reminders,
+    isLoading,
+    isBusy,
+    isTyping,
+    error,
+    sendCommand,
+    addCustomSubscription,
+    markReminderPaid,
+    dismissReminder,
+  };
 }

@@ -1,4 +1,4 @@
-import type { Subscription } from '@/types/subguard';
+import type { Reminder, Subscription } from '@/types/subguard';
 
 const COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five'];
 
@@ -51,6 +51,25 @@ export function getMonthlySavings(subscriptions: Subscription[]): number {
   return subscriptions
     .filter((sub) => sub.status === 'cancelled')
     .reduce((total, sub) => total + sub.price, 0);
+}
+
+export function getUpcomingReminders(reminders: Reminder[]): Reminder[] {
+  return reminders.filter((r) => r.status === 'upcoming');
+}
+
+export function daysUntil(dueDate: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + 'T00:00:00');
+  return Math.round((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+export function formatDueLabel(dueDate: string): string {
+  const days = daysUntil(dueDate);
+  if (days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} overdue`;
+  if (days === 0) return 'Due today';
+  if (days === 1) return 'Due tomorrow';
+  return `Due in ${days} days`;
 }
 
 export function parseCommand(input: string): ParsedCommand {

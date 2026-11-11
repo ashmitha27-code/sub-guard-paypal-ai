@@ -8,6 +8,7 @@ export interface Subscription {
   category: string;
   price: number;
   previous_price: number | null;
+  billing_day: number | null;
   status: SubscriptionStatus;
   alert_type: AlertType | null;
   reviewed: boolean;
@@ -22,4 +23,22 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   created_at: string;
+}
+
+export type ReminderStatus = 'upcoming' | 'paid' | 'dismissed';
+
+export interface Reminder {
+  id: string;
+  subscription_name: string;
+  amount: number;
+  due_date: string;
+  status: ReminderStatus;
+  created_at: string;
+}
+
+export interface CustomSubscriptionInput {
+  name: string;
+  category: string;
+  price: number;
+  billing_day: number | null;
 }
