@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import type { CatalogService } from '@/lib/subguard-logic';
 import type { ChatMessage, MessageRole, Subscription, SubscriptionStatus, AlertType } from '@/types/subguard';
 
 const SUBSCRIPTION_COLUMNS = 'id, name, category, price, previous_price, status, alert_type, reviewed, cancelled_at, created_at';
@@ -56,6 +57,17 @@ export async function insertMessage(role: MessageRole, content: string): Promise
 
   if (error) throw new Error(error.message);
   return data as ChatMessage;
+}
+
+export async function insertSubscription(service: CatalogService): Promise<Subscription> {
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .insert({ name: service.name, category: service.category, price: service.price, status: 'active' })
+    .select(SUBSCRIPTION_COLUMNS)
+    .single();
+
+  if (error) throw new Error(error.message);
+  return toSubscription(data as SubscriptionRow);
 }
 
 export async function updateSubscription(id: string, changes: SubscriptionChanges): Promise<Subscription> {

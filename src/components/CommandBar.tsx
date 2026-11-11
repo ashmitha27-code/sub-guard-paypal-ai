@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Send } from 'lucide-react';
 
-const QUICK_COMMANDS = ['Cancel Disney', 'Keep Spotify', 'Cancel Apple Music', 'Analyze history'];
+const QUICK_COMMANDS = ['Add Hotstar', 'Add Netflix', 'Cancel Netflix', 'Add Spotify Premium', 'Remove Spotify Premium', 'Analyze history'];
 
 interface CommandBarProps {
   disabled: boolean;
@@ -43,7 +43,7 @@ export default function CommandBar({ disabled, onSend }: CommandBarProps) {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           disabled={disabled}
-          placeholder="Ask subguard to cancel, keep, or analyze..."
+          placeholder="Ask subguard to add, cancel, keep, or analyze..."
           className="min-w-0 flex-1 rounded-xl border border-white/10 bg-navy-950 px-4 py-3 text-sm text-white placeholder:text-slate-500 transition focus:border-emerald-400/60 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-50"
         />
         <button

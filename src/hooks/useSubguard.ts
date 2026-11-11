@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchMessages, fetchSubscriptions, insertMessage, updateSubscription } from '@/lib/subguard-data';
+import { fetchMessages, fetchSubscriptions, insertMessage, insertSubscription, updateSubscription } from '@/lib/subguard-data';
 import {
   HELP_TEXT,
   buildAnalysis,
   buildScanMessages,
+  catalogNames,
+  findCatalogService,
   findSubscription,
   formatMoney,
   getActiveSubscriptions,
@@ -39,6 +41,46 @@ export function useSubguard() {
 
   const replaceSubscription = (updated: Subscription) => {
     setSubscriptions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+  };
+
+  const appendSubscription = (created: Subscription) => {
+    setSubscriptions((prev) => [...prev, created]);
+  };
+
+  const addSubscription = async (name: string): Promise<boolean> => {
+    const existing = subscriptions.find(
+      (sub) => sub.name.toLowerCase() === name.toLowerCase(),
+    );
+
+    if (existing && existing.status === 'active') {
+      await reply(`You're already subscribed to ${existing.name}. It's in your active list at ${formatMoney(existing.price)} per month.`, 600);
+      return true;
+    }
+
+    if (existing && existing.status === 'cancelled') {
+      await reply(`Reactivating ${existing.name} through PayPal merchant rails.`, 800);
+      const updated = await updateSubscription(existing.id, {
+        status: 'active',
+        alert_type: null,
+        reviewed: true,
+        cancelled_at: null,
+      });
+      replaceSubscription(updated);
+      await reply(`Done. ${existing.name} is active again at ${formatMoney(existing.price)} per month.`, 800);
+      return true;
+    }
+
+    const service = findCatalogService(name);
+    if (!service) return false;
+
+    await reply(`Adding ${service.name} at ${formatMoney(service.price)} per month.`, 700);
+    const created = await insertSubscription(service);
+    appendSubscription(created);
+    await reply(
+      `Done. ${service.name} is now on your active list at ${formatMoney(service.price)} per month.`,
+      800,
+    );
+    return true;
   };
 
   const cancelSubscription = async (sub: Subscription) => {
@@ -77,6 +119,16 @@ export function useSubguard() {
         return reply(buildAnalysis(subscriptions), 1000);
       case 'help':
         return reply(HELP_TEXT, 600);
+      case 'add': {
+        const added = await addSubscription(command.query);
+        if (!added) {
+          await reply(
+            `I don't recognize that service. I can add ${catalogNames()}.`,
+            600,
+          );
+        }
+        return;
+      }
       case 'cancel':
       case 'keep': {
         const sub = findSubscription(subscriptions, command.query);
@@ -93,7 +145,7 @@ export function useSubguard() {
       }
       default:
         return reply(
-          'I can cancel a subscription, keep one, or analyze your history. Try "Cancel Disney" or "Analyze history".',
+          'I can add, cancel, keep, or analyze a subscription. Try "Add Netflix", "Cancel Disney", or "Analyze history".',
           600,
         );
     }
